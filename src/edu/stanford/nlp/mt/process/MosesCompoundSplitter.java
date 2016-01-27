@@ -31,9 +31,10 @@ import edu.stanford.nlp.stats.Counter;
 public class MosesCompoundSplitter {
   
   private static String[] FILLERS = {"", "s", "es"};
-  private static int MIN_SIZE = 3; // the minimum number of characters is actually MIN_SIZE + 1
-  private static int MIN_COUNT = 5;
-  private static int MAX_COUNT = 5;
+  private static final int MIN_SIZE = 3; // the minimum number of characters is actually MIN_SIZE + 1
+  private static final int MIN_COUNT = 5;
+  private static final int MAX_COUNT = 5;
+  private static final int MAX_NUM_SPLITS = 1000000;
 
   
   private final boolean useUnigramProbs;
@@ -94,11 +95,20 @@ public class MosesCompoundSplitter {
   
   public String process(String input) {
     Sequence<IString> tokenized = IStrings.toIStringSequence(input.split("\\s+"));
-    return process(tokenized).e().toString();
+    return process(tokenized).toString();
   }
   
   
-  public SymmetricalWordAlignment process(Sequence<IString> tokenizedInput) {
+  public Sequence<IString> process(Sequence<IString> tokenizedInput) {
+    return decompound(tokenizedInput).e();
+  }
+  
+  public SymmetricalWordAlignment process(SymmetricalWordAlignment tokenizedInput) { 
+    SymmetricalWordAlignment align = decompound(tokenizedInput.e());
+    return projectAlignment(tokenizedInput, align);
+  }
+  
+  private SymmetricalWordAlignment decompound(Sequence<IString> tokenizedInput) {
     int size = tokenizedInput.size();
     Sequence<IString> result = new ArraySequence<IString>(new IString[]{});
     int sizes[] = new int[size]; 
@@ -116,15 +126,12 @@ public class MosesCompoundSplitter {
     for(int i = 0, j = 0; i < size; ++i) {
       for(int k = 0; k < sizes[i]; ++k, ++j) rv.addAlign(i, j);
     }
+    
     return rv;
   }
   
-  public SymmetricalWordAlignment process(SymmetricalWordAlignment tokenizedInput) {
-    SymmetricalWordAlignment decompounded = process(tokenizedInput.e());
-    return projectAlignment(tokenizedInput, decompounded);
-  }
   
-  public SymmetricalWordAlignment projectAlignment(SymmetricalWordAlignment tokenizedInput, SymmetricalWordAlignment decompounded) {
+  private SymmetricalWordAlignment projectAlignment(SymmetricalWordAlignment tokenizedInput, SymmetricalWordAlignment decompounded) {
     assert(tokenizedInput.e().equals(decompounded.f()));
     SymmetricalWordAlignment rv = new SymmetricalWordAlignment(tokenizedInput.f(), decompounded.e());
     
@@ -150,13 +157,13 @@ public class MosesCompoundSplitter {
   }
     
   private Sequence<IString> splitWord(IString word) {
-    List<List<Match>> matches = new ArrayList<List<Match>>();
-    for(int i = 0; i < word.length(); ++i) matches.add(null);
-    
     String lc = word.toString().toLowerCase();
+    List<List<Match>> matches = new ArrayList<List<Match>>();
+    for(int i = 0; i < lc.length(); ++i) matches.add(null);
     if(lcModel.getCount(lc) >= MAX_COUNT || !containsLetter(lc)) return new ArraySequence<IString>(new IString[]{ word });
     // TODO: do something with the word
     int length = lc.length();
+    
     for(int end = MIN_SIZE; end < length; ++end) {
       for(int start = 0; start <= end - MIN_SIZE; ++start) {
         if(start != 0 && matches.get(start - 1) == null) continue;
@@ -185,6 +192,7 @@ public class MosesCompoundSplitter {
     List<String> bestSplit = new ArrayList<>();
     List<String> reverseSplit = new ArrayList<>();
     
+    int numSplits = 0;
     boolean finished = false;
     while(!finished) {
       int pos = word.length() - 1;
@@ -211,6 +219,12 @@ public class MosesCompoundSplitter {
       if(score > bestScore) {
         bestScore = score;
         bestSplit = new ArrayList<>(reverseSplit);
+      }
+      
+      // safeguard to avoid (nearly) infinite running
+      if(++numSplits > MAX_NUM_SPLITS) {
+        finished = true;
+        break;
       }
       
       int splitPos = -1;
