@@ -170,6 +170,7 @@ public class CubePruningDecoder<TK,FV> extends AbstractBeamInferer<TK, FV> {
     boolean prefilledBeams = false;
     final boolean prefixEnabled = sourceInputProperties.containsKey(InputProperty.TargetPrefix) && 
         targets != null && targets.size() > 0 && targets.get(0).size() > 0;
+    int[] targetCardinalityCounts;
     if (prefixEnabled) {
       if (targets.size() > 1) logger.warn("Decoding to multiple prefixes is not supported. Choosing the first one.");
 
@@ -180,8 +181,13 @@ public class CubePruningDecoder<TK,FV> extends AbstractBeamInferer<TK, FV> {
       SyntheticRules.augmentRuleGrid(ruleGrid, targets.get(0), sourceInputId, source, this, sourceInputProperties, prefixAlignCompounds);
       
       timer.mark("PrefixAug");
+      targetCardinalityCounts = new int[targets.get(0).size()];
+      for(int i = 0; i < targetCardinalityCounts.length; ++i) targetCardinalityCounts[i] = 0;
     }
-    
+    else {
+      targetCardinalityCounts = new int[0];
+    }
+     
     // main translation loop---beam expansion
     final int maxPhraseLength = phraseGenerator.maxLengthSource();
     int totalHypothesesGenerated = 1, numRecombined = 0, numPruned = 0;
@@ -216,6 +222,8 @@ public class CubePruningDecoder<TK,FV> extends AbstractBeamInferer<TK, FV> {
           newBeam.put(item.derivation);
           ++numPoppedItems;
           seenCompatiblePrefix = seenCompatiblePrefix || item.derivation.length >= targets.get(0).size();
+          
+          if(prefixEnabled && item.derivation.length <= targets.get(0).size()) targetCardinalityCounts[item.derivation.length]++;
         }
 
         // Expand this consequent
@@ -267,7 +275,10 @@ public class CubePruningDecoder<TK,FV> extends AbstractBeamInferer<TK, FV> {
     logger.info("input {}: Decoding time: {}", sourceInputId, timer);
     logger.info("input {}: #derivations generated: {}  pruned: {}  recombined: {}", sourceInputId, 
         totalHypothesesGenerated, numPruned, numRecombined);
-
+    logger.info("target card beam sizes: ");
+    for(int i = 0; i < targetCardinalityCounts.length; ++i) logger.info("card {}: {}", i, targetCardinalityCounts[i]);
+    
+    
     // Return the best beam, which should be the goal beam
     boolean isGoalBeam = true;
     for (int i = beams.size()-1; i >= 0; --i) {
