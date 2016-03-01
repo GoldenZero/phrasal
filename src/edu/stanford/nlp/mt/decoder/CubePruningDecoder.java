@@ -223,7 +223,7 @@ public class CubePruningDecoder<TK,FV> extends AbstractBeamInferer<TK, FV> {
           ++numPoppedItems;
           seenCompatiblePrefix = seenCompatiblePrefix || item.derivation.length >= targets.get(0).size();
           
-          if(prefixEnabled && item.derivation.length <= targets.get(0).size()) targetCardinalityCounts[item.derivation.length]++;
+          if(prefixEnabled && item.derivation.length <= targets.get(0).size()) targetCardinalityCounts[item.derivation.length-1]++;
         }
 
         // Expand this consequent
